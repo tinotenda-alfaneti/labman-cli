@@ -18,6 +18,8 @@ var loginCmd = &cobra.Command{
 and saves the credentials in the local keyring so other commands can reuse them.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		printBanner(cmd)
+
 		user, err := cmd.Flags().GetString("username")
 		if err != nil {
 			return fmt.Errorf("read username flag: %w", err)
@@ -35,7 +37,7 @@ and saves the credentials in the local keyring so other commands can reuse them.
 		}
 
 		serverIP := args[0]
-		fmt.Fprintf(cmd.OutOrStdout(), "Logging into server %s\n", serverIP)
+		printSection(cmd, "LOGIN", fmt.Sprintf("Connecting to %s as %s", serverIP, user))
 
 		loginClient, err := remote.NewSSHSession(serverIP, user, password)
 		if err != nil {
@@ -51,7 +53,7 @@ and saves the credentials in the local keyring so other commands can reuse them.
 			return fmt.Errorf("failed to save session: %w", err)
 		}
 
-		fmt.Fprintln(cmd.OutOrStdout(), "Login successful and session saved.")
+		printSection(cmd, "SUCCESS", "Login successful and session saved.")
 		return nil
 	},
 }

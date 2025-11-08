@@ -20,6 +20,10 @@ var selfCmd = &cobra.Command{
 cleaning disk space, or checking system status without touching the cluster.`,
 	PersistentPreRunE: requireSession,
 	PersistentPostRun: cleanupSession,
+	Run: func(cmd *cobra.Command, args []string) {
+		printBanner(cmd)
+		printSection(cmd, "SELF", "Run 'labman self info' or other maintenance subcommands")
+	},
 }
 
 var selfInfoCmd = &cobra.Command{
@@ -38,7 +42,7 @@ including OS version, kernel details, and hardware specs.`,
 			return fmt.Errorf("failed to fetch system info: %w", err)
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "Remote system information:\n%s\n", output)
+		printSection(cmd, "SYSTEM INFO", output)
 		return nil
 	},
 }
