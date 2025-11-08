@@ -38,7 +38,7 @@ including OS version, kernel details, and hardware specs.`,
 			return fmt.Errorf("failed to fetch system info: %w", err)
 		}
 
-		fmt.Printf("Remote system information:\n%s\n", output)
+		fmt.Fprintf(cmd.OutOrStdout(), "Remote system information:\n%s\n", output)
 		return nil
 	},
 }

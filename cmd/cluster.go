@@ -17,7 +17,7 @@ var clusterCmd = &cobra.Command{
 	Long: `Cluster hosts all SSH-backed operations. Use it to authenticate,
 inspect state, and run other management tasks against your remote server.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("cluster called")
+		fmt.Fprintln(cmd.OutOrStdout(), "cluster called")
 	},
 	PersistentPreRunE: requireSession,
 	PersistentPostRun: cleanupSession,
@@ -39,7 +39,7 @@ state, making it easy to inspect components from your local terminal.`,
 			return fmt.Errorf("failed to run command: %w", err)
 		}
 
-		fmt.Printf("------Command output-----\n%s\n-------------------------\n", output)
+		fmt.Fprintf(cmd.OutOrStdout(), "------Command output-----\n%s\n-------------------------\n", output)
 
 		return nil
 	},
