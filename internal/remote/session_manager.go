@@ -3,11 +3,14 @@ package remote
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/zalando/go-keyring"
 	"gopkg.in/yaml.v2"
 )
+
+const sessionTimeOut = 5 * time.Minute
 
 func LoadSession() (*SSHSession, error) {
 	sessionFile, err := getSessionFilePath()
@@ -36,6 +39,59 @@ func LoadSession() (*SSHSession, error) {
 
 	return NewSSHSession(sessionData.Host, sessionData.User, password)
 
+}
+
+func SaveSession(s *SSHSession) error {
+	
+	createSessionFilePath, err := getSessionFilePath()
+	if err != nil {
+		return fmt.Errorf("failed to get session file path: %w", err)
+	}
+	return saveSessionToFile(createSessionFilePath, s)
+}
+
+func getSessionFilePath() (string, error) {
+    homeDir, err := os.UserHomeDir()
+    if err != nil {
+        return "", fmt.Errorf("resolve home directory: %w", err)
+    }
+    return filepath.Join(homeDir, ".labman", "sessions", "credentials.yaml"), nil
+}
+
+func saveSessionToFile(filePath string, session *SSHSession) error {
+
+	sessionTimeout := time.Now().Add(sessionTimeOut)
+	credentialKey := credentialsKey(session.Host, session.User)
+
+	if err := keyring.Set(keyringService, credentialKey, session.Password); err != nil {
+		return fmt.Errorf("store password in keyring: %w", err)
+	}
+
+	sessionData := SSHSessionConfig{
+		Host:     session.Host,
+		User:     session.User,
+		Timeout:  sessionTimeout,
+			
+	}
+	err := os.MkdirAll(filepath.Dir(filePath), 0o700)
+	if err != nil {
+		return fmt.Errorf("failed to create session directory: %v", err)
+	}
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create session file: %v", err)
+	}
+	defer file.Close()
+
+	encoder := yaml.NewEncoder(file)
+	defer encoder.Close()
+
+	if err := encoder.Encode(sessionData); err != nil {
+		return fmt.Errorf("error encoding YAML: %v", err)
+	}
+
+	return nil
 }
 
 func loadSessionDataFromFile(sessionFile string) (SSHSessionConfig, error) {

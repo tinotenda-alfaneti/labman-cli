@@ -35,7 +35,7 @@ and saves the credentials in the local keyring so other commands can reuse them.
 			return fmt.Errorf("failed to connect to server: %w", err)
 		}
 
-		err = loginClient.SaveSession()
+		err = remote.SaveSession(loginClient)
 		if err != nil {
 			return fmt.Errorf("failed to save session: %s", err)
 		}
