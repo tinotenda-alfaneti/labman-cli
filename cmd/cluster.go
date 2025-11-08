@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github/tinotenda-alfaneti/labman/internal/remote"
 
-	"errors"
 	"github.com/spf13/cobra"
 )
 
@@ -20,40 +19,33 @@ inspect state, and run other management tasks against your remote server.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("cluster called")
 	},
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if cmd.Name() == "login" || cmd.HasParent() && cmd.Parent().Name() == "login" {
-			return nil
+	PersistentPreRunE: requireSession,
+	PersistentPostRun: cleanupSession,
+}
+
+var clusterInfoCmd = &cobra.Command{
+	Use:   "info",
+	Short: "Show Kubernetes cluster diagnostics",
+	Long: `Runs 'kubectl cluster-info dump' on the remote host to print detailed cluster
+state, making it easy to inspect components from your local terminal.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		infoClient := remote.Current()
+		if infoClient == nil {
+			return fmt.Errorf("not connected to any cluster. Please login first")
 		}
 
-		if remote.Current() != nil {
-			return nil
-		}
-
-		client, err := remote.LoadSession()
+		output, err := infoClient.Run("kubectl cluster-info dump")
 		if err != nil {
-			return fmt.Errorf("failed to load session: %w", err)
+			return fmt.Errorf("failed to run command: %w", err)
 		}
 
-		if !client.IsConnected() {
-			_ = client.Close()
-			return errors.New("not connected to any cluster. Please login first")
-		}
-
-		remote.SetCurrent(client)
+		fmt.Printf("------Command output-----\n%s\n-------------------------\n", output)
 
 		return nil
-	},
-	PersistentPostRun: func(cmd *cobra.Command, args []string) {
-		client := remote.Current()
-		if client == nil {
-			return
-		}
-
-		_ = client.Close()
-		remote.SetCurrent(nil)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(clusterCmd)
+	clusterCmd.AddCommand(clusterInfoCmd)
 }

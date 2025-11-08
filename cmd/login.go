@@ -49,7 +49,7 @@ and saves the credentials in the local keyring so other commands can reuse them.
 }
 
 func init() {
-	clusterCmd.AddCommand(loginCmd)
+	rootCmd.AddCommand(loginCmd)
 	loginCmd.Flags().StringP("username", "u", "", "username for ssh login")
 	loginCmd.Flags().StringP("password", "p", "", "password for ssh login")
 }
