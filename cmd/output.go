@@ -7,13 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const homelabBanner = `
-Welcome to LabMan - Your Homelab Management CLI
-`
+const homelabBanner = `Welcome to LabMan - Your Homelab Management CLI`
 
-func printBanner(cmd *cobra.Command) {
-	fmt.Fprintln(cmd.OutOrStdout(), homelabBanner)
-}
+func printBanner(cmd *cobra.Command) { fmt.Fprintln(cmd.OutOrStdout(), homelabBanner)}
 
 func printSection(cmd *cobra.Command, title, body string) {
 	out := cmd.OutOrStdout()

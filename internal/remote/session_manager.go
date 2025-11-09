@@ -10,6 +10,12 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+var (
+	keyringSet    = keyring.Set
+	keyringGet    = keyring.Get
+	newSSHSession = NewSSHSession
+)
+
 const sessionTimeOut = 5 * time.Minute
 
 func LoadSession() (*SSHSession, error) {
@@ -32,12 +38,12 @@ func LoadSession() (*SSHSession, error) {
 		return nil, fmt.Errorf("session has expired: %v", err)
 	}
 
-	password, err := keyring.Get(keyringService, credentialsKey(sessionData.Host, sessionData.User))
+	password, err := keyringGet(keyringService, credentialsKey(sessionData.Host, sessionData.User))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load password from keyring: %w", err)
 	}
 
-	return NewSSHSession(sessionData.Host, sessionData.User, password)
+	return newSSHSession(sessionData.Host, sessionData.User, password)
 
 }
 
@@ -63,7 +69,7 @@ func saveSessionToFile(filePath string, session *SSHSession) error {
 	sessionTimeout := time.Now().Add(sessionTimeOut)
 	credentialKey := credentialsKey(session.Host, session.User)
 
-	if err := keyring.Set(keyringService, credentialKey, session.Password); err != nil {
+	if err := keyringSet(keyringService, credentialKey, session.Password); err != nil {
 		return fmt.Errorf("store password in keyring: %w", err)
 	}
 
