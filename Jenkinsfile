@@ -9,7 +9,10 @@ pipeline {
     stage('Checkout') {
       steps {
         echo 'Fetching source...'
-        checkout scm
+        dir('src') {
+          deleteDir()
+          checkout scm
+        }
       }
     }
 
@@ -39,11 +42,13 @@ pipeline {
     stage('Unit Tests') {
       steps {
         echo 'Running go test ./...'
-        sh '''
-          export PATH="$WORKSPACE/go/bin:$PATH"
-          go version
-          go test ./...
-        '''
+        dir('src') {
+          sh '''
+            export PATH="$WORKSPACE/go/bin:$PATH"
+            go version
+            go test ./...
+          '''
+        }
       }
     }
   }
