@@ -10,7 +10,14 @@ import (
 func TestCLIHelpCommand(t *testing.T) {
 	cmd := exec.Command("go", "run", "./main.go", "--help")
 
-	tempHome := t.TempDir()
+	tempHome, err := os.MkdirTemp("", "labman-cli-home-")
+	if err != nil {
+		t.Fatalf("create temp home: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(tempHome)
+	}()
+
 	cmd.Env = append(os.Environ(),
 		"HOME="+tempHome,
 		"USERPROFILE="+tempHome,
