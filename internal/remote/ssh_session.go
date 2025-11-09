@@ -1,11 +1,12 @@
 package remote
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"time"
 
 	"golang.org/x/crypto/ssh"
-
 )
 
 const keyringService = "labman"
@@ -69,6 +70,34 @@ func (s *SSHSession) Run(cmd string) (string, error) {
 
 	return string(output), nil
 }
+
+func (s *SSHSession) RunStream(cmd string, w io.Writer) error {
+    session, err := s.Client.NewSession()
+    if err != nil {
+        return err
+    }
+    defer session.Close()
+
+    stdout, _ := session.StdoutPipe()
+    stderr, _ := session.StderrPipe()
+    go io.Copy(w, stderr)
+
+    if err := session.Start(cmd); err != nil {
+        return err
+    }
+
+    scanner := bufio.NewScanner(stdout)
+    for scanner.Scan() {
+        fmt.Fprintln(w, scanner.Text())
+    }
+
+    if err := session.Wait(); err != nil {
+        return err
+    }
+
+    return nil
+}
+
 
 
 func (s *SSHSession) IsConnected() bool {
