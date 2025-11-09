@@ -1,4 +1,4 @@
-module github/tinotenda-alfaneti/labman
+module github.com/tinotenda-alfaneti/labman
 
 go 1.24.0
 

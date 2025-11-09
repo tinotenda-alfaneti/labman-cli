@@ -4,8 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github/tinotenda-alfaneti/labman/internal/remote"
-
+	"github.com/tinotenda-alfaneti/labman/internal/remote"
 	"github.com/spf13/cobra"
 )
 
