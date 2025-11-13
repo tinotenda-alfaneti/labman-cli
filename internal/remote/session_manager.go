@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,10 +14,11 @@ import (
 var (
 	keyringSet    = keyring.Set
 	keyringGet    = keyring.Get
+	keyringDelete = keyring.Delete
 	newSSHSession = NewSSHSession
 )
 
-const sessionTimeOut = 5 * time.Minute
+const sessionTimeOut = 3600 * time.Minute
 
 func LoadSession() (*SSHSession, error) {
 	sessionFile, err := getSessionFilePath()
@@ -28,14 +30,13 @@ func LoadSession() (*SSHSession, error) {
 		return nil, fmt.Errorf("session file does not exist: %v", err)
 	}
 
-	sessionData , err := loadSessionDataFromFile(sessionFile)
-
+	sessionData, err := loadSessionDataFromFile(sessionFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load session data from file: %v", err)
 	}
 
 	if sessionData.Timeout.Before(time.Now()) {
-		return nil, fmt.Errorf("session has expired: %v", err)
+		return nil, fmt.Errorf("session has expired at %s", sessionData.Timeout.Format(time.RFC3339))
 	}
 
 	password, err := keyringGet(keyringService, credentialsKey(sessionData.Host, sessionData.User))
@@ -44,11 +45,9 @@ func LoadSession() (*SSHSession, error) {
 	}
 
 	return newSSHSession(sessionData.Host, sessionData.User, password)
-
 }
 
 func SaveSession(s *SSHSession) error {
-	
 	createSessionFilePath, err := getSessionFilePath()
 	if err != nil {
 		return fmt.Errorf("failed to get session file path: %w", err)
@@ -56,16 +55,60 @@ func SaveSession(s *SSHSession) error {
 	return saveSessionToFile(createSessionFilePath, s)
 }
 
+func SessionMetadata() (SSHSessionConfig, error) {
+	sessionFile, err := getSessionFilePath()
+	if err != nil {
+		return SSHSessionConfig{}, fmt.Errorf("failed to get session file path: %w", err)
+	}
+
+	if _, err := os.Stat(sessionFile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return SSHSessionConfig{}, fmt.Errorf("session file does not exist")
+		}
+		return SSHSessionConfig{}, fmt.Errorf("stat session file: %w", err)
+	}
+
+	return loadSessionDataFromFile(sessionFile)
+}
+
+func DeleteSession() error {
+	sessionFile, err := getSessionFilePath()
+	if err != nil {
+		return fmt.Errorf("failed to get session file path: %w", err)
+	}
+
+	sessionData, err := loadSessionDataFromFile(sessionFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("session file does not exist")
+		}
+		return err
+	}
+
+	credentialKey := credentialsKey(sessionData.Host, sessionData.User)
+	if err := keyringDelete(keyringService, credentialKey); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return fmt.Errorf("remove credentials from keyring: %w", err)
+	}
+
+	if err := os.Remove(sessionFile); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("remove session file: %w", err)
+	}
+
+	return nil
+}
+
 func getSessionFilePath() (string, error) {
-    homeDir, err := os.UserHomeDir()
-    if err != nil {
-        return "", fmt.Errorf("resolve home directory: %w", err)
-    }
-    return filepath.Join(homeDir, ".labman", "sessions", "credentials.yaml"), nil
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".labman", "sessions", "credentials.yaml"), nil
 }
 
 func saveSessionToFile(filePath string, session *SSHSession) error {
-
 	sessionTimeout := time.Now().Add(sessionTimeOut)
 	credentialKey := credentialsKey(session.Host, session.User)
 
@@ -74,10 +117,9 @@ func saveSessionToFile(filePath string, session *SSHSession) error {
 	}
 
 	sessionData := SSHSessionConfig{
-		Host:     session.Host,
-		User:     session.User,
-		Timeout:  sessionTimeout,
-			
+		Host:    session.Host,
+		User:    session.User,
+		Timeout: sessionTimeout,
 	}
 	err := os.MkdirAll(filepath.Dir(filePath), 0o700)
 	if err != nil {

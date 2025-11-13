@@ -91,11 +91,68 @@ func TestSessionManager(t *testing.T) {
 			t.Fatalf("expected password %q, got %q", session.Password, loaded.Password)
 		}
 	})
+
+	t.Run("SessionMetadata returns saved session config", func(t *testing.T) {
+		sessionFilePath, err := getSessionFilePath()
+		if err != nil {
+			t.Fatalf("get session file path: %v", err)
+		}
+
+		session := &SSHSession{
+			Host:     "metadata.example",
+			User:     "me",
+			Password: "topsecret",
+		}
+
+		if err := saveSessionToFile(sessionFilePath, session); err != nil {
+			t.Fatalf("save session: %v", err)
+		}
+		t.Cleanup(func() { os.Remove(sessionFilePath) })
+
+		meta, err := SessionMetadata()
+		if err != nil {
+			t.Fatalf("SessionMetadata: %v", err)
+		}
+
+		if meta.Host != session.Host || meta.User != session.User {
+			t.Fatalf("expected %s/%s, got %s/%s", session.User, session.Host, meta.User, meta.Host)
+		}
+	})
+
+	t.Run("DeleteSession removes session file and secrets", func(t *testing.T) {
+		sessionFilePath, err := getSessionFilePath()
+		if err != nil {
+			t.Fatalf("get session file path: %v", err)
+		}
+
+		session := &SSHSession{
+			Host:     "delete.example",
+			User:     "deleter",
+			Password: "secret",
+		}
+
+		if err := saveSessionToFile(sessionFilePath, session); err != nil {
+			t.Fatalf("save session: %v", err)
+		}
+
+		if err := DeleteSession(); err != nil {
+			t.Fatalf("DeleteSession: %v", err)
+		}
+
+		if _, err := os.Stat(sessionFilePath); !os.IsNotExist(err) {
+			t.Fatalf("expected session file removed, stat err=%v", err)
+		}
+
+		if _, ok := secrets[credentialsKey(session.Host, session.User)]; ok {
+			t.Fatalf("expected keyring secret removed")
+		}
+	})
 }
 
 func stubKeyring() (map[string]string, func()) {
 	originalSet := keyringSet
 	originalGet := keyringGet
+	originalDelete := keyringDelete
 
 	secrets := map[string]string{}
 
@@ -110,10 +167,15 @@ func stubKeyring() (map[string]string, func()) {
 		}
 		return secret, nil
 	}
+	keyringDelete = func(service, user string) error {
+		delete(secrets, user)
+		return nil
+	}
 
 	return secrets, func() {
 		keyringSet = originalSet
 		keyringGet = originalGet
+		keyringDelete = originalDelete
 	}
 }
 

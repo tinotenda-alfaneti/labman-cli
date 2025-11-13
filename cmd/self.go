@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinotenda-alfaneti/labman/internal/remote"
 	"github.com/spf13/cobra"
+	"github.com/tinotenda-alfaneti/labman/internal/remote"
 )
 
 // selfCmd groups OS-level maintenance commands for the remote host.
@@ -267,12 +267,164 @@ This command assumes you have a working SSH session via 'labman login'.`,
 	},
 }
 
+var selfDisksCmd = &cobra.Command{
+	Use:   "disks",
+	Short: "Inspect filesystem usage and surface heavy directories",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := remote.Current()
+		if client == nil {
+			return fmt.Errorf("not connected to any server. Run 'labman login' first")
+		}
+
+		sections := []struct {
+			Title   string
+			Command string
+		}{
+			{"FILESYSTEM USAGE", "df -h"},
+			{"BLOCK DEVICES", "lsblk -o NAME,SIZE,FSTYPE,TYPE,MOUNTPOINT"},
+			{"TOP /var/lib DIRECTORIES", "sudo du -xh --max-depth=1 /var/lib 2>/dev/null | sort -hr | head -n 10"},
+			{"TOP /var/log DIRECTORIES", "sudo du -xh --max-depth=1 /var/log 2>/dev/null | sort -hr | head -n 10"},
+		}
+
+		for _, section := range sections {
+			output, err := client.Run(section.Command)
+			if err != nil {
+				output = fmt.Sprintf("%s failed: %v", section.Title, err)
+			}
+			printSection(cmd, section.Title, output)
+		}
+
+		return nil
+	},
+}
+
+var selfServicesCmd = &cobra.Command{
+	Use:   "services",
+	Short: "Check core services (Pi-hole, MicroK8s, VPN) and optionally restart them",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := remote.Current()
+		if client == nil {
+			return fmt.Errorf("not connected to any server. Run 'labman login' first")
+		}
+
+		restartTarget, _ := cmd.Flags().GetString("restart")
+		if restartTarget != "" {
+			restartCmd, ok := serviceRestartCommands[restartTarget]
+			if !ok {
+				return fmt.Errorf("unknown service %q (choose from microk8s, pihole, tailscale, wireguard)", restartTarget)
+			}
+			if _, err := client.Run(restartCmd); err != nil {
+				return fmt.Errorf("restart %s: %w", restartTarget, err)
+			}
+		}
+
+		statusOutput, err := client.Run(serviceStatusScript)
+		if err != nil {
+			return fmt.Errorf("service status check failed: %w", err)
+		}
+		printSection(cmd, "SERVICE STATUS", statusOutput)
+
+		microk8sStatus, err := client.Run("microk8s status --wait-ready")
+		if err != nil {
+			microk8sStatus = fmt.Sprintf("microk8s status failed: %v", err)
+		}
+		printSection(cmd, "MICROK8S STATUS", microk8sStatus)
+		return nil
+	},
+}
+
+var selfNetCheckCmd = &cobra.Command{
+	Use:   "netcheck",
+	Short: "Run ping, traceroute, and speed tests from the node",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := remote.Current()
+		if client == nil {
+			return fmt.Errorf("not connected to any server. Run 'labman login' first")
+		}
+
+		gatewayRaw, err := client.Run(`ip route | awk '/default/ {print $3; exit}'`)
+		if err != nil {
+			return fmt.Errorf("detect default gateway: %w", err)
+		}
+		gateway := strings.TrimSpace(gatewayRaw)
+		gatewayTitle := "LAN GATEWAY"
+		if gateway == "" {
+			gateway = "192.168.1.1"
+			gatewayTitle += " (guessed 192.168.1.1)"
+		} else {
+			gatewayTitle += fmt.Sprintf(" (%s)", gateway)
+		}
+
+		lanCmd := fmt.Sprintf("ping -c 4 %s", shellQuote(gateway))
+		lanOutput, err := client.Run(lanCmd)
+		if err != nil {
+			lanOutput = fmt.Sprintf("ping failed: %v", err)
+		}
+		printSection(cmd, gatewayTitle, lanOutput)
+
+		for _, target := range []string{"1.1.1.1", "8.8.8.8"} {
+			pingCmd := fmt.Sprintf("ping -c 4 %s", target)
+			output, err := client.Run(pingCmd)
+			if err != nil {
+				output = fmt.Sprintf("ping failed: %v", err)
+			}
+			printSection(cmd, fmt.Sprintf("WAN PING (%s)", target), output)
+		}
+
+		traceCmd := `if command -v mtr >/dev/null 2>&1; then mtr -r -c 10 1.1.1.1; elif command -v traceroute >/dev/null 2>&1; then traceroute 1.1.1.1; else echo "Install mtr or traceroute for hop diagnostics."; fi`
+		traceOutput, err := client.Run(traceCmd)
+		if err != nil {
+			traceOutput = fmt.Sprintf("trace failed: %v", err)
+		}
+		printSection(cmd, "ROUTE TO 1.1.1.1", traceOutput)
+
+		speedCmd := `if command -v speedtest-cli >/dev/null 2>&1; then speedtest-cli --simple; else echo "speedtest-cli not installed (sudo snap install speedtest-cli)"; fi`
+		speedOutput, err := client.Run(speedCmd)
+		if err != nil {
+			speedOutput = fmt.Sprintf("speedtest failed: %v", err)
+		}
+		printSection(cmd, "WAN SPEEDTEST", speedOutput)
+		return nil
+	},
+}
+
+const serviceStatusScript = `
+report() {
+  unit=$1
+  label=$2
+  status=$(systemctl is-active "$unit" 2>/dev/null || true)
+  if [ -z "$status" ]; then
+    status="unknown"
+  fi
+  printf "%-24s %s\n" "$label" "$status"
+}
+report pihole-FTL "Pi-hole"
+report snap.microk8s.daemon-apiserver "MicroK8s API"
+report snap.microk8s.daemon-controller-manager "MicroK8s controller"
+report snap.microk8s.daemon-kubelet "MicroK8s kubelet"
+report tailscaled "Tailscale"
+report wg-quick@wg0 "WireGuard (wg0)"
+echo ""
+echo "NAS mounts:"
+mount | grep -E '/mnt/(nas|media|storage)' || echo "  (no NAS mounts detected)"
+`
+
+var serviceRestartCommands = map[string]string{
+	"microk8s":  "sudo snap restart microk8s",
+	"pihole":    "sudo systemctl restart pihole-FTL",
+	"tailscale": "sudo systemctl restart tailscaled",
+	"wireguard": "sudo systemctl restart wg-quick@wg0",
+}
 
 func init() {
 	rootCmd.AddCommand(selfCmd)
 	selfCmd.AddCommand(selfInfoCmd)
 	selfCmd.AddCommand(selfCleanCmd)
 	selfCmd.AddCommand(selfUpgradeOSCmd)
+	selfCmd.AddCommand(selfDisksCmd)
+	selfCmd.AddCommand(selfServicesCmd)
+	selfCmd.AddCommand(selfNetCheckCmd)
 	selfUpgradeOSCmd.Flags().Bool("refresh-microk8s", false, "refresh the microk8s snap after OS upgrade")
 	selfUpgradeOSCmd.Flags().Bool("no-reboot", false, "perform the upgrade but do not reboot (for testing)")
+	selfServicesCmd.Flags().String("restart", "", "Restart one service (microk8s, pihole, tailscale, wireguard) before checking status")
 }

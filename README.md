@@ -3,10 +3,11 @@
 LabMan is a Cobra-based CLI that helps you manage a personal homelab from your laptop. It opens SSH sessions to your servers, stores short-lived credentials securely, and provides curated workflows for gathering diagnostics or running maintenance routines.
 
 ## Key Features
-- **Session-aware commands** – `labman login <host>` authenticates over SSH, verifies host keys with your `~/.ssh/known_hosts` file, and caches credentials using the system keyring so future commands can reuse the session.
-- **Cluster inspection** – `labman cluster info` tunnels into the remote host and runs `kubectl cluster-info dump`, so you can review Kubernetes state without manually SSH-ing first.
-- **Self-maintenance** – `labman self info` prints OS metadata, while `labman self clean` runs a sequence of `apt`, journal, clock-sync, and MicroK8s cleanup commands, streaming the remote output back to your terminal.
-- **Centralized output helpers** – all commands share consistent banners and boxed sections through `cmd/output.go`, making CLI output easy to scan.
+- **Session-aware commands** `labman login <host>` authenticates over SSH, verifies host keys with your `~/.ssh/known_hosts` file, and caches credentials using the system keyring. `labman session status --drop` lets you audit or rotate cached credentials without hunting for files.
+- **Cluster inspection & care** `labman cluster info/status/workloads` tunnel into MicroK8s to show cluster-info dumps, control-plane health, resource usage, and CrashLoop logs. `labman cluster backup` triggers Velero + etcd snapshots, and `labman cluster restart <addon|service>` wraps the usual recovery scripts.
+- **Self-maintenance**  `labman self info/clean/disks/services/netcheck/upgrade` cover OS metadata, apt/journal cleanup, disk forensics, critical service checks (with optional restarts), network probes, and Kubernetes-aware OS upgrades.
+- **Diagnostic bundles** `labman diag bundle` runs `kubectl get all`, `kubectl get events`, `journalctl`, and `microk8s inspect`, packaging everything into a tarball you can download later or stream directly to stdout.
+- **Centralized output helpers** � all commands share consistent banners and boxed sections through `cmd/output.go`, making CLI output easy to scan.
 
 ## Prerequisites
 - Go 1.24 or newer (per `go.mod`)
@@ -26,7 +27,11 @@ You can also run the CLI without building a binary:
 ```bash
 go run ./main.go login 192.168.1.10 -u ubuntu -p secret
 go run ./main.go cluster info
+go run ./main.go cluster status
+go run ./main.go cluster workloads --max-crash-pods 3
 go run ./main.go self clean
+go run ./main.go self services --restart microk8s
+go run ./main.go diag bundle --stdout > diag.tar.gz
 ```
 
 The login command must succeed before `cluster` or `self` subcommands run; those rely on the cached session stored under `~/.labman/sessions/credentials.yaml` plus the OS keyring entry (`labman:<user>@<host>`).
