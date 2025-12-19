@@ -18,7 +18,8 @@ var (
 	newSSHSession = NewSSHSession
 )
 
-const sessionTimeOut = 3600 * time.Minute
+// DefaultSessionTTL is the time a session remains valid after login
+const DefaultSessionTTL = time.Hour
 
 func LoadSession() (*SSHSession, error) {
 	sessionFile, err := getSessionFilePath()
@@ -109,7 +110,7 @@ func getSessionFilePath() (string, error) {
 }
 
 func saveSessionToFile(filePath string, session *SSHSession) error {
-	sessionTimeout := time.Now().Add(sessionTimeOut)
+	sessionTimeout := time.Now().Add(DefaultSessionTTL)
 	credentialKey := credentialsKey(session.Host, session.User)
 
 	if err := keyringSet(keyringService, credentialKey, session.Password); err != nil {
@@ -126,7 +127,7 @@ func saveSessionToFile(filePath string, session *SSHSession) error {
 		return fmt.Errorf("failed to create session directory: %v", err)
 	}
 
-	file, err := os.Create(filePath)
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to create session file: %v", err)
 	}

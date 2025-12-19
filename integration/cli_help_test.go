@@ -47,8 +47,8 @@ func TestLoginRequiresUsernameFlag(t *testing.T) {
 		t.Fatalf("expected login to fail when username flag missing")
 	}
 
-	if !strings.Contains(output, `required flag(s) "username" not set`) {
-		t.Fatalf("expected missing username flag error, got: %s", output)
+	if !strings.Contains(output, "username is required") {
+		t.Fatalf("expected missing username error, got: %s", output)
 	}
 }
 

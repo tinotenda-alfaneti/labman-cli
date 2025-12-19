@@ -3,11 +3,12 @@
 LabMan is a Cobra-based CLI that helps you manage a personal homelab from your laptop. It opens SSH sessions to your servers, stores short-lived credentials securely, and provides curated workflows for gathering diagnostics or running maintenance routines.
 
 ## Key Features
+- **Configuration management** Create a `~/.labman/config.yaml` file to define host aliases, default usernames, and organize servers into groups. Use `labman config init` to generate a sample config, then reference hosts by name instead of typing IPs every time.
 - **Session-aware commands** `labman login <host>` authenticates over SSH, verifies host keys with your `~/.ssh/known_hosts` file, and caches credentials using the system keyring. `labman session status --drop` lets you audit or rotate cached credentials without hunting for files.
 - **Cluster inspection & care** `labman cluster info/status/workloads` tunnel into MicroK8s to show cluster-info dumps, control-plane health, resource usage, and CrashLoop logs. `labman cluster backup` triggers Velero + etcd snapshots, and `labman cluster restart <addon|service>` wraps the usual recovery scripts.
 - **Self-maintenance**  `labman self info/clean/disks/services/netcheck/upgrade` cover OS metadata, apt/journal cleanup, disk forensics, critical service checks (with optional restarts), network probes, and Kubernetes-aware OS upgrades.
 - **Diagnostic bundles** `labman diag bundle` runs `kubectl get all`, `kubectl get events`, `journalctl`, and `microk8s inspect`, packaging everything into a tarball you can download later or stream directly to stdout.
-- **Centralized output helpers** � all commands share consistent banners and boxed sections through `cmd/output.go`, making CLI output easy to scan.
+- **Centralized output helpers** all commands share consistent banners and boxed sections through `cmd/output.go`, making CLI output easy to scan.
 
 ## Prerequisites
 - Go 1.24 or newer (per `go.mod`)
@@ -22,16 +23,55 @@ go mod tidy            # downloads modules
 go build ./...         # optional: compile to ./labman
 ```
 
+### Quick Start
+
+1. **Initialize configuration** (optional but recommended):
+```bash
+labman config init
+# Edit ~/.labman/config.yaml to add your hosts
+```
+
+Example config:
+```yaml
+defaults:
+  username: ubuntu
+  port: 22
+
+hosts:
+  homelab-prod:
+    host: 192.168.1.10
+    username: admin
+  
+  k8s-master:
+    host: 192.168.1.20
+
+groups:
+  production:
+    - homelab-prod
+    - k8s-master
+```
+
+2. **Login using host alias**:
+```bash
+labman login homelab-prod
+# Or login with direct IP
+labman login 192.168.1.10 -u admin
+```
+
 You can also run the CLI without building a binary:
 
 ```bash
-go run ./main.go login 192.168.1.10 -u ubuntu -p secret
+# Using host alias from config
+go run ./main.go login homelab-prod
 go run ./main.go cluster info
 go run ./main.go cluster status
 go run ./main.go cluster workloads --max-crash-pods 3
 go run ./main.go self clean
 go run ./main.go self services --restart microk8s
 go run ./main.go diag bundle --stdout > diag.tar.gz
+
+# Using direct IP
+go run ./main.go login 192.168.1.10 -u ubuntu
 ```
 
 The login command must succeed before `cluster` or `self` subcommands run; those rely on the cached session stored under `~/.labman/sessions/credentials.yaml` plus the OS keyring entry (`labman:<user>@<host>`).
