@@ -1,1 +1,7 @@
 *.exe
+
+# Test coverage files
+coverage.out
+coverage.txt
+coverage
+*.coverprofile
